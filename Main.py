@@ -1,23 +1,22 @@
 import os
 import re
 import sys
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
-from PyQt5.uic import loadUiType
-from os import path
 import urllib.request
-from urllib.request import urlopen
-from urllib.request import urlretrieve
-import cgi
+from os import path
+
+import pafy
+from PyQt5.QtCore import QCoreApplication
+from PyQt5.QtGui import QIcon
+from PyQt5.QtWidgets import QMainWindow, QFileDialog, QApplication, QMessageBox
+from PyQt5.uic import loadUiType
 
 FORM_CLASS, _ = loadUiType(path.join(path.dirname(__file__), "main.ui"))
 
 
 class MainApp(QMainWindow, FORM_CLASS):
 
-    def __init__(self, parent=None):
-        super(MainApp, self).__init__(parent)
+    def __init__(self):
+        super(MainApp, self).__init__()
         QMainWindow.__init__(self)
         self.setupUi(self)
         self.setWindowTitle("DM")
@@ -34,11 +33,19 @@ class MainApp(QMainWindow, FORM_CLASS):
         self.actionExit_2.triggered.connect(self.endMyLife)
         self.pushButton_2.clicked.connect(self.handleBrowse)
 
+    def downloadRequirementsCheck(self):
+        # TODO check link if standard check if it have a file not html get the file name or ask the user to provide
+        # i think we should use Requests lib for th e check
+        # TODO ask for location if the default not set then set
+        # check for dubs
+        pass
+
     def handleBrowse(self):
-        select = QFileDialog.getSaveFileName(self, caption="Save As", directory=".", filter="ALL Files (*.*)")
-        self.plainTextEdit_2.setPlainText(select[0])
+        select = QFileDialog.getExistingDirectory(self, "Select Download Directory")
+        self.plainTextEdit_2.setPlainText(select)
 
     def setDefaultDownloadLocation(self):
+        # TODO should be set as the last used or downloads
         pass
 
     def handleProgressBar(self, blocknum, blocksize, totalsize):
@@ -49,37 +56,91 @@ class MainApp(QMainWindow, FORM_CLASS):
         QApplication.processEvents()
 
     def handleDownload(self):
-        urllib.request.urlretrieve(self.getUrl(), self.getPath(), self.handleProgressBar)
+        url = self.getUrl()
+        path = self.getPath()
+
+        try:
+            if self.checkIfYouTube(url):
+                if "playlist" in url:
+                    self.playlistDownload(url)
+                self.youtubeDownload(url,path)
+            else:
+                self.standardDownload(url, path)
+        except Exception:
+            QMessageBox.information(self, "ERROR", "Sorry, Check Your Internet Connection")
+        else :
+            QMessageBox.information(self, "Downloading", "Please WAIT")
+
+    def standardDownload(self, url, standardPath):
+        urllib.request.urlretrieve(url, standardPath, self.handleProgressBar)
+
+    def youtubeDownload(self, url,path):
+        v = pafy.new(url)
+        for s in v.allstreams:
+            size = s.get_filesize()
+            data = "{}{}{}{}".format(s.mediatype, s.extension, s.quality, size)
+            self.comboBox.addItem(data)
+        quality = self.comboBox.currentIndex()
+        v.allstreams[quality].download(filepath=path)
+
+        # TODO  video name, ETA, Received Bytes, Speed
+
+    # def playlistDownload(self, url):
+    #
+    #     os.chdir(path)
+    #
+    #     if os.path.exists(str(playlist["title"])) :
+    #         os.chdir(str(playlist["title"]))
+    #     else:
+    #         os.mkdir(str(playlist["title"]))
+    #         os.chdir(str(playlist["title"]))
+
+    def videoDataRetrieve(self, url):
+        pass
+
+    # def playlistDataRetrieve(self, url):
+    #     playlist = pafy.get_playlist(url)
 
     def pauseContinue(self):
         pass
 
     def getUrl(self):
+        # TODO get url from clipboard
         if self.plainTextEdit.toPlainText() == "":
             self.plainTextEdit.setPlainText("TEST")
             return "http://www.tutorialspoint.com/python/python_tutorial.pdf"
+        elif self.plainTextEdit.toPlainText() == "y":
+            self.plainTextEdit.setPlainText("YOUTUBE TEST")
+            return "https://youtube.com/watch?v=XJGiS83eQLk"
         else:
             return self.plainTextEdit.toPlainText()
 
     def getPath(self):
         if self.plainTextEdit_2.toPlainText() == "":
             self.plainTextEdit_2.setPlainText("TEST")
-            desktop = os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop')
-            return desktop + "\\" + "test.pdf"
+            downloads = os.path.join(os.path.join(os.environ['USERPROFILE']), 'Downloads')
+            return downloads + "\\" + "test.pdf"
         else:
             return self.plainTextEdit_2.toPlainText()
 
-    def getFileName(self, url):
-        remotefile = urlopen(url)
-        blah = remotefile.info()['Content-Disposition']
-        value, params = cgi.parse_header(blah)
-        filename = params["filename"]
-        urlretrieve(url, filename)
-        return filename
+    # TODO takes a url ==> return file name
+    def getFileName(self):
+        pass
+
+    #     remotefile = urlopen(url)
+    #     blah = remotefile.info()['Content-Disposition']
+    #     value, params = cgi.parse_header(blah)
+    #     filename = params["filename"]
+    #     urlretrieve(url, filename)
+    #     return filename
 
     def dublicatesCheck(self):
-        # check if the givin dir exists and if the file already exists if it does check if it is complete or the same
-        #  as the new one may offer multible opthions to deal
+        # check if the given dir exists and if the file already exists if it does check if it is complete or the same
+        # as the new one may offer multiple options to deal
+        try:
+            pass
+        except FileExistsError:
+            print("DUB")
         pass
 
     # gather errors and notify
@@ -102,10 +163,11 @@ class MainApp(QMainWindow, FORM_CLASS):
         self.plainTextEdit_2.setPlainText("")
         self.progressBar.setValue(0)
 
-    def checkIfYouTube(url):
+    def checkIfYouTube(self, url):
         youTube = re.compile(
             "http(?:s?):\/\/(?:www\.)?youtu(?:be\.com\/watch\?v=|\.be\/)([\w\-\_]*)(&(amp;)?‌​[\w\?‌​=]*)?")
         if re.match(youTube, url):
+            # TODO check if a playlist
             return True
         else:
             return False
